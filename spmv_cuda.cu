@@ -275,17 +275,16 @@ __global__ void spmv_cuda_kernel(int num_rows, const int* __restrict__ row_ptr, 
     int row = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (row < num_rows) {
-        y[row] = 1.0;
-        //double sum = 0.0;
-        //int start = row_ptr[row];
-        //int end   = row_ptr[row + 1];
+        double sum = 0.0;
+        int start = row_ptr[row];
+        int end   = row_ptr[row + 1];
 
         // Loop over the non-zero elements of this row
-        //for (int k = start; k < end; ++k) {
+        for (int k = start; k < end; ++k) {
             // A[row][col] * x[col]
-            //sum += vals[k] * x[col_idx[k]];
-        //}
-        //y[row] = sum;
+            sum += vals[k] * x[col_idx[k]];
+        }
+        y[row] = sum;
     }
 }
 
