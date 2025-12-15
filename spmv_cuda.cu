@@ -291,12 +291,10 @@ __global__ void spmv_cuda_kernel(int num_rows, const int* __restrict__ row_ptr, 
 // --------------- Host wrapper that calls your kernel(s) -------------
 // Includes event timing around YOUR launch(es).
 static void spmv(const std::vector<double>& x_host, std::vector<double>& y_host) {
-    // You will do any H2D/D2H copies you need.
+    size_t vec_bytes = G_M * sizeof(double);
     
-    size_t x_bytes = G_M * sizeof(double); 
-    size_t y_bytes = G_N * sizeof(double);
-
-    CUDA_CHECK(cudaMemcpy(d_x, x_host.data(), x_bytes, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_x, x_host.data(), vec_bytes, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemset(d_y, 0, vec_bytes));
 
     int block_size = 128; 
     int grid_size  = (G_N + block_size - 1) / block_size;
@@ -304,39 +302,38 @@ static void spmv(const std::vector<double>& x_host, std::vector<double>& y_host)
     cudaEvent_t start, stop;
     CUDA_CHECK(cudaEventCreate(&start));
     CUDA_CHECK(cudaEventCreate(&stop));
-
     CUDA_CHECK(cudaEventRecord(start));
 
     // YOU WILL LAUNCH YOUR KERNEL(S) HERE.
     // Example: spmv_cuda_kernel<<<grid_dim, block_dim>>>(...);
     int iterations = 50;
     for (int i = 0; i < iterations; ++i) {
-        // Launch Kernel: y = A * x
+        
         spmv_cuda_kernel<<<grid_size, block_size>>>(G_N, d_row_ptr, d_col_idx, d_vals, d_x, d_y);
         
-        // Swap pointers for next iteration
-        // The output 'd_y' becomes the input 'd_x' for the next step
         std::swap(d_x, d_y);
     }
 
+    
     CUDA_CHECK(cudaEventRecord(stop));
     CUDA_CHECK(cudaEventSynchronize(stop));
 
     float milliseconds = 0.0f;
     CUDA_CHECK(cudaEventElapsedTime(&milliseconds, start, stop));
-    // We need the result back to verify correctness
-    CUDA_CHECK(cudaMemcpy(y_host.data(), d_y, y_bytes, cudaMemcpyDeviceToHost));
+
+    CUDA_CHECK(cudaMemcpy(y_host.data(), d_x, vec_bytes, cudaMemcpyDeviceToHost));
 
     CUDA_CHECK(cudaEventDestroy(start));
     CUDA_CHECK(cudaEventDestroy(stop));
 
+    
     const double sec = milliseconds * 1e-3;
     const size_t nnz = G_col_idx.size();
     if (sec > 0.0) {
-        // One SpMV: ≈ 2*nnz FLOPs (mul+add)
-        gflops = (2.0 * (double)nnz) / (sec * 1e9);
+        // Total Ops = 2 * nnz * 50 iterations
+        double total_ops = 2.0 * (double)nnz * (double)iterations;
+        gflops = total_ops / (sec * 1e9);
     }
-    // You will ensure y_host is filled if you want a non-zero checksum.
 }
 
 // --------------- Cleanup (we do this) -------------------------------
