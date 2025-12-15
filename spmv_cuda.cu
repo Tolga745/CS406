@@ -309,7 +309,15 @@ static void spmv(const std::vector<double>& x_host, std::vector<double>& y_host)
 
     // YOU WILL LAUNCH YOUR KERNEL(S) HERE.
     // Example: spmv_cuda_kernel<<<grid_dim, block_dim>>>(...);
-    spmv_cuda_kernel<<<grid_size, block_size>>>(G_N, d_row_ptr, d_col_idx, d_vals, d_x, d_y);
+    int iterations = 50;
+    for (int i = 0; i < iterations; ++i) {
+        // Launch Kernel: y = A * x
+        spmv_cuda_kernel<<<grid_size, block_size>>>(G_N, d_row_ptr, d_col_idx, d_vals, d_x, d_y);
+        
+        // Swap pointers for next iteration
+        // The output 'd_y' becomes the input 'd_x' for the next step
+        std::swap(d_x, d_y);
+    }
 
     CUDA_CHECK(cudaEventRecord(stop));
     CUDA_CHECK(cudaEventSynchronize(stop));
