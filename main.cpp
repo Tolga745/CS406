@@ -32,7 +32,31 @@ static inline int encode_value(int src, int dst, int k) {
 
 // -------------------- TODO: implement this --------------------
 void MPI_Alltoall_int(const int* sb, int* rb, int msg_size, MPI_Comm comm) {
-  // DO NOT use MPI_Alltoall / collectives here.
+    int rank, size;
+    MPI_Comm_rank(comm, &rank);
+    MPI_Comm_size(comm, &size);
+
+    for (int i = 0; i < size; ++i) {
+        // Calculate the partner to exchange data with in this step
+        // This pattern helps distribute network traffic
+        int target = i; 
+
+        // Pointer to the block of data intended for 'target'
+        const int* send_ptr = sb + (target * msg_size);
+        
+        // Pointer to the block where data from 'target' should be stored
+        int* recv_ptr = rb + (target * msg_size);
+
+        if (rank == target) {
+            // Local copy for self-to-self communication
+            std::copy(send_ptr, send_ptr + msg_size, recv_ptr);
+        } else {
+            // Use Sendrecv to avoid manual deadlock management
+            MPI_Sendrecv(send_ptr, msg_size, MPI_INT, target, 0,
+                         recv_ptr, msg_size, MPI_INT, target, 0,
+                         comm, MPI_STATUS_IGNORE);
+        }
+    }
 }
 
 // -------------------- helpers --------------------
