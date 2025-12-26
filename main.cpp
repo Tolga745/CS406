@@ -37,24 +37,23 @@ void MPI_Alltoall_int(const int* sb, int* rb, int msg_size, MPI_Comm comm) {
     MPI_Comm_size(comm, &size);
 
     for (int i = 0; i < size; ++i) {
-        // Calculate the partner to exchange data with in this step
-        // This pattern helps distribute network traffic
-        int target = i; 
-
-        // Pointer to the block of data intended for 'target'
+        int target = i;
         const int* send_ptr = sb + (target * msg_size);
-        
-        // Pointer to the block where data from 'target' should be stored
-        int* recv_ptr = rb + (target * msg_size);
+        int* recv_ptr = rb + (rank * msg_size); // Note: index depends on sender in final result
 
         if (rank == target) {
-            // Local copy for self-to-self communication
-            std::copy(send_ptr, send_ptr + msg_size, recv_ptr);
+            // Local copy for the block intended for ourselves
+            std::copy(sb + (rank * msg_size), sb + (rank * msg_size) + msg_size, rb + (rank * msg_size));
         } else {
-            // Use Sendrecv to avoid manual deadlock management
-            MPI_Sendrecv(send_ptr, msg_size, MPI_INT, target, 0,
-                         recv_ptr, msg_size, MPI_INT, target, 0,
-                         comm, MPI_STATUS_IGNORE);
+            // To avoid deadlock: lower ranks send then receive, higher ranks receive then send
+            // Or use the parity of the target rank to order operations
+            if (rank < target) {
+                MPI_Send(sb + (target * msg_size), msg_size, MPI_INT, target, 0, comm);
+                MPI_Recv(rb + (target * msg_size), msg_size, MPI_INT, target, 0, comm, MPI_STATUS_IGNORE);
+            } else {
+                MPI_Recv(rb + (target * msg_size), msg_size, MPI_INT, target, 0, comm, MPI_STATUS_IGNORE);
+                MPI_Send(sb + (target * msg_size), msg_size, MPI_INT, target, 0, comm);
+            }
         }
     }
 }
